@@ -7,13 +7,16 @@ This branch contains a deliberately small browser prototype for validating the a
 
 ### Run locally
 
-Requirements: Node.js 22.12+ and a Firebase project used only for this POC.
+Requirements: Node.js 22.12+ and access to the Phase 3 Firebase project.
+
+The live POC environment is associated with Firebase project `mini-explorer-712b4`. Its Realtime Database is in `asia-southeast1` (Singapore) at `https://mini-explorer-712b4-default-rtdb.asia-southeast1.firebasedatabase.app`.
 
 1. Install dependencies with `npm install`.
-2. Copy `.env.example` to `.env.local` and add the Firebase Web App configuration.
-3. In Firebase Authentication, enable the Anonymous sign-in provider.
-4. Create a Realtime Database and deploy `firebase/database.rules.json` (for example with `firebase deploy --only database`).
-5. Run `npm run dev` and open the shown URL in 2–4 separate browser profiles or devices.
+2. Copy `.env.example` to `.env.local` and add the Firebase Web App configuration for `mini-explorer-712b4`. The local file is ignored by Git.
+3. Confirm that Anonymous Authentication remains enabled.
+4. Verify the Firebase CLI target with `npx firebase-tools use`.
+5. Deploy only the checked-in Realtime Database rules with `npx firebase-tools deploy --only database --project mini-explorer-712b4`.
+6. Run `npm run dev` and open the shown URL. Environment verification needs one browser; the later A–H test session needs 2–4 separate browser profiles or devices.
 
 The included rules are intentionally POC-level. Authenticated clients in a room can read the room and can update the player collection; they are not production authorization rules.
 
