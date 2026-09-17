@@ -71,6 +71,7 @@ label { display: grid; gap: 0.4rem; font-size: 0.9rem; font-weight: 650; }
 .image-frame img { display: block; height: 100%; object-fit: cover; width: 100%; }
 .image-frame.hidden img { opacity: 0; }
 .image-cover { align-items: center; background: #111827; color: white; display: flex; font-size: clamp(1rem, 4vw, 1.5rem); font-weight: 800; inset: 0; justify-content: center; padding: 2rem; position: absolute; text-align: center; }
+.image-cover[hidden] { display: none; }
 .question-content { padding: 1rem; }
 .question-content h2 { margin: 0.3rem 0 1rem; }
 .question-content.concealed { visibility: hidden; }

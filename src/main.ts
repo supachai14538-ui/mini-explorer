@@ -47,6 +47,7 @@ let readyHeld = false;
 let artificialReadyDelayMs = 0;
 let selectedMode: GameMode = "classic";
 let pendingReady: { preparationId: string; values: ReadinessRecord } | null = null;
+let duplicateTestTrace = "";
 const receivedRevealRounds = new Set<string>();
 const recordedRevealRounds = new Set<string>();
 
@@ -181,16 +182,17 @@ function renderQuestion(sharedTime: number): string {
 
   return `
     <div class="question-stage">
-      <div class="image-frame ${imageVisible ? "visible" : "hidden"}">
+      <div class="image-frame ${imageVisible ? "visible" : "hidden"}" data-live="image-frame">
         <img src="${POC_QUESTION.imageUrl}" alt="Stylized Eiffel Tower timing fixture" />
-        ${overlayText ? `<div class="image-cover">${escapeHtml(overlayText)}</div>` : ""}
+        <div class="image-cover" data-live="image-cover" ${overlayText ? "" : "hidden"}>${escapeHtml(overlayText)}</div>
       </div>
-      <div class="question-content ${choicesVisible ? "visible" : "concealed"}">
+      <div class="question-content ${choicesVisible ? "visible" : "concealed"}" data-live="question-content">
         <p class="eyebrow">${escapeHtml(mode.toUpperCase())} · static fixture</p>
         <h2>${escapeHtml(POC_QUESTION.prompt)}</h2>
         <div class="choices">${choices}</div>
         ${ownAnswer ? `<p class="message">Answer accepted at ${formatTime(ownAnswer.submittedAt)}</p>` : ""}
-        ${ownAnswer ? `<button type="button" class="text-button" data-action="duplicate-answer">Send the same answer again (Test G)</button>` : ""}
+        ${ownAnswer && game.state === "RESULT" ? `<button type="button" class="text-button" data-action="duplicate-answer">Send the same answer again (Test G)</button>` : ""}
+        ${duplicateTestTrace ? `<p class="message" role="status" data-test-g-trace>${escapeHtml(duplicateTestTrace)}</p>` : ""}
         ${result}
       </div>
     </div>
@@ -228,11 +230,11 @@ function renderDiagnostics(sharedTime: number, imageVisible: boolean): string {
         <div><dt>Client ID</dt><dd>${escapeHtml(services.user.uid)}</dd></div>
         <div><dt>Current State</dt><dd>${escapeHtml(game.state)}</dd></div>
         <div><dt>Last State Event</dt><dd>${escapeHtml(game.lastEvent)}</dd></div>
-        <div><dt>Server offset</dt><dd>${Math.round(serverOffsetMs)} ms</dd></div>
-        <div><dt>Current shared time</dt><dd>${formatTime(sharedTime)}</dd></div>
+        <div><dt>Server offset</dt><dd data-live="server-offset">${Math.round(serverOffsetMs)} ms</dd></div>
+        <div><dt>Current shared time</dt><dd data-live="shared-time">${formatTime(sharedTime)}</dd></div>
         <div><dt>Expected revealAt</dt><dd>${formatTime(game.revealAt)}</dd></div>
-        <div><dt>Remaining time</dt><dd>${remaining === null ? "—" : `${(remaining / 1000).toFixed(2)} s`}</dd></div>
-        <div><dt>Image visibility</dt><dd>${imageVisible ? "VISIBLE" : "HIDDEN"}</dd></div>
+        <div><dt>Remaining time</dt><dd data-live="remaining-time">${remaining === null ? "—" : `${(remaining / 1000).toFixed(2)} s`}</dd></div>
+        <div><dt>Image visibility</dt><dd data-live="image-visibility">${imageVisible ? "VISIBLE" : "HIDDEN"}</dd></div>
         <div><dt>Local preparation</dt><dd>${escapeHtml(localPreparationStatus)}</dd></div>
         <div><dt>revealAt received</dt><dd>${formatTime(diagnostic?.revealAtReceivedAt)}</dd></div>
         <div><dt>Actual client reveal</dt><dd>${formatTime(diagnostic?.actualRevealAt)}</dd></div>
@@ -246,6 +248,51 @@ function renderDiagnostics(sharedTime: number, imageVisible: boolean): string {
       </div>
     </details>
   `;
+}
+
+function updateLiveClockUi(): void {
+  if (!room) return;
+  const sharedTime = now();
+  const game = room.game;
+  const mode = game.mode ?? "classic";
+  const choicesVisible = game.state === "RESULT" || areChoicesVisible(sharedTime, game.revealAt);
+  const imageVisible = isQuestionImageVisible(mode, sharedTime, game.revealAt, game.state);
+  const remaining = millisecondsRemaining(sharedTime, game.revealAt, game.durationMs);
+  const revealWait = millisecondsUntilReveal(sharedTime, game.revealAt);
+  const overlayText = !choicesVisible
+    ? game.state === "PREPARING"
+      ? "Preloading and decoding before Ready"
+      : game.state === "ALL_READY"
+        ? "All clients ready"
+        : `Reveal in ${((revealWait ?? 0) / 1000).toFixed(2)}s`
+    : mode === "blink" && !imageVisible && game.state !== "RESULT"
+      ? "BLINK · image hidden by shared clock"
+      : "";
+
+  const imageFrame = root.querySelector<HTMLElement>('[data-live="image-frame"]');
+  imageFrame?.classList.toggle("visible", imageVisible);
+  imageFrame?.classList.toggle("hidden", !imageVisible);
+
+  const questionContent = root.querySelector<HTMLElement>('[data-live="question-content"]');
+  questionContent?.classList.toggle("visible", choicesVisible);
+  questionContent?.classList.toggle("concealed", !choicesVisible);
+
+  const imageCover = root.querySelector<HTMLElement>('[data-live="image-cover"]');
+  if (imageCover) {
+    imageCover.textContent = overlayText;
+    imageCover.hidden = overlayText.length === 0;
+  }
+
+  const values: Record<string, string> = {
+    "server-offset": `${Math.round(serverOffsetMs)} ms`,
+    "shared-time": formatTime(sharedTime),
+    "remaining-time": remaining === null ? "—" : `${(remaining / 1000).toFixed(2)} s`,
+    "image-visibility": imageVisible ? "VISIBLE" : "HIDDEN",
+  };
+  for (const [key, value] of Object.entries(values)) {
+    const target = root.querySelector<HTMLElement>(`[data-live="${key}"]`);
+    if (target) target.textContent = value;
+  }
 }
 
 function renderRoom(): void {
@@ -522,10 +569,22 @@ async function handleAnswer(choiceId: string): Promise<void> {
 }
 
 async function handleDuplicateAnswer(): Promise<void> {
-  if (!services || !roomId || !room?.game.roundId) return;
+  duplicateTestTrace = "CLICK RECEIVED → HANDLER ENTERED";
+  render();
+  if (!services || !roomId || !room?.game.roundId) {
+    duplicateTestTrace += " → STOPPED: missing Firebase session, room, or round";
+    render();
+    return;
+  }
   const currentAnswer = room.answers?.[room.game.roundId]?.[services.user.uid];
-  if (!currentAnswer) return;
+  if (!currentAnswer) {
+    duplicateTestTrace += " → STOPPED: local accepted answer not found";
+    render();
+    return;
+  }
   try {
+    duplicateTestTrace += " → DUPLICATE SUBMIT ATTEMPTED";
+    render();
     const committed = await submitAnswer(
       services.database,
       roomId,
@@ -534,12 +593,15 @@ async function handleDuplicateAnswer(): Promise<void> {
       currentAnswer.choiceId,
       now(),
     );
+    duplicateTestTrace += ` → FIREBASE TRANSACTION RESULT: committed=${committed}`;
     if (committed) throw new Error("Duplicate protection failed: second write committed.");
     await updateDiagnostics(services.database, roomId, room.game.roundId, services.user.uid, {
       duplicateAnswerRejectedAt: now(),
     });
+    duplicateTestTrace += " → EXPECTED DUPLICATE REJECTION/NO-OP";
     statusMessage = "Test G: duplicate answer rejected by transaction.";
   } catch (error) {
+    duplicateTestTrace += ` → ERROR: ${error instanceof Error ? error.message : String(error)}`;
     errorMessage = error instanceof Error ? error.message : String(error);
   }
   render();
@@ -602,7 +664,7 @@ async function start(): Promise<void> {
     ticker = window.setInterval(() => {
       if (room) {
         void processRoomSnapshot(room, false);
-        render();
+        updateLiveClockUi();
       }
     }, 100);
   } catch (error) {
