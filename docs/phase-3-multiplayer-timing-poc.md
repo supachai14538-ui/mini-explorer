@@ -1,6 +1,6 @@
 # Phase 3 Multiplayer Timing POC
 
-สถานะ: Documentation / Repository Setup เท่านั้น
+สถานะ: Final verification complete — `PASS WITH LIMITATIONS` — Phase 3 freeze candidate
 
 ## Objective
 
@@ -8,7 +8,7 @@
 
 เส้นทางขั้นต่ำที่ต้องพิสูจน์คือ:
 
-`Room → Prepare Question → Preload → Decode → Client Ready → All Players Ready → Countdown → revealAt → Synchronized Reveal → Timer → Answer → Result`
+`Room → Prepare Question → Preload → Decode → Client Ready → All Players Ready → Countdown → revealAt → Synchronized Reveal → Timer → Answer → Answer Lock → Result`
 
 ## Scope
 
@@ -133,11 +133,69 @@ Diagnostic UI/บันทึกการทดสอบควรแสดงอ
 
 ## Next Step After POC
 
-เมื่อ POC ผ่าน ให้:
+หลังจาก Project Owner อนุมัติ Phase 3 freeze candidate ให้:
 
 1. สรุป Final Timing Protocol
 2. ยืนยัน Firebase Data Layer ที่จะใช้ต่อ
-3. เข้าสู่ Phase 4 — Content Pipeline POC
+3. เข้าสู่ Phase 4 — Content Pipeline POC เมื่อได้รับอนุมัติแยกต่างหาก
 4. หลังจากนั้นจึงเริ่ม Core Game Implementation ตามลำดับที่ได้รับอนุมัติ
 
-การเริ่มเขียน POC Code จริงต้องรอ Project Owner ตรวจสอบ Repository Setup และอนุมัติก่อน
+Phase 3 ไม่ใช่ Production Readiness approval และรายการที่ยังเป็น TBD ด้านล่างยังต้องได้รับการตัดสินใจแยกต่างหาก
+
+## Phase 3 Final Verification Results
+
+### Final classification
+
+`PASS WITH LIMITATIONS`
+
+Core multiplayer timing protocol ผ่าน automated และ live multi-client verification ครอบคลุม Ready Barrier, authority-controlled shared `revealAt`, shared timer, Blink shared clock, duplicate-answer idempotency, cross-device operation, browser network throttling และ refresh continuity ในขอบเขต POC อย่างไรก็ตาม ผลนี้ไม่ใช่การรับรอง production readiness เนื่องจาก reconnect policy, authority migration/disconnect behavior, production latency tolerance, scaling และรายการ TBD อื่นยังอยู่นอกขอบเขต
+
+### A–H result matrix
+
+| Test | Result | Verified evidence and limitation |
+| --- | --- | --- |
+| A — Normal Network | PASS | Anonymous Firebase clients สองรายมี UID ต่างกัน อยู่ใน Room เดียวกันและมี authority/client roles ถูกต้อง; preload, decode, Ready Barrier, hidden-before-reveal, shared `revealAt`, QUESTION, answers และ RESULT ทำงานครบ พบ reveal differences ตัวอย่าง `0 ms` และ `141 ms`; ยังไม่มี final production tolerance |
+| B — Slow Client / Ready Barrier | PASS | เมื่อใช้ artificial delay `0 ms` และ `5000 ms`, fast Ready เวลา `11:27:39.971`, delayed Ready เวลา `11:27:44.912`, และ shared `revealAt` เวลา `11:27:48.082`; fast client ไม่เริ่มก่อน ระบบรอ delayed client ก่อน schedule reveal; การทดสอบ 3 clients ที่ `0/5000/7000 ms` รอ Ready รายสุดท้ายเช่นกัน |
+| C — Network Delay | PASS WITH TEST LIMITATION | Firefox Regular 3G: Mobile Ready `12:34:49.372`, Firefox Ready `12:34:49.450`, expected reveal `12:34:52.691`, actual Firefox reveal `12:34:52.763`, difference `72 ms`; shared timing ยังเป็น authority แต่ browser throttling ไม่จำลองคุณลักษณะทั้งหมดของ degraded Firebase RTDB persistent connection |
+| D — Different Device Speed / Cross Device | PASS WITH CROSS-DEVICE EVIDENCE | Linux desktop/Firefox และ mobile device เล่นผ่าน Firebase RTDB ใน Room เดียวกัน พบ preload/decode completion ต่างกันแต่ Ready Barrier ยัง synchronize ก่อน reveal; ทดสอบสำเร็จกับ 3 active clients ด้วย ข้อมูลนี้เป็น POC evidence ไม่ใช่ hardware benchmark |
+| E — Late Ready | PASS | Hold Ready ทำให้ preload/decode เสร็จแต่ `readyAt`, `revealAt` และ Remaining Time ยัง unset; state อยู่ PREPARING และ image HIDDEN ราวสองนาที เมื่อ release: Ready `11:48:18.401`, reveal `11:48:21.674`, actual `11:48:21.727`, difference `53 ms`; flow เดินต่ออัตโนมัติโดยไม่ต้อง Prepare ซ้ำ |
+| F — Blink Shared Clock | PASS | ช่วง HIDE แสดง `BLINK · image hidden by shared clock`; visibility มาจาก elapsed shared time ไม่ใช่ independent timer และ automated tests ครอบคลุม boundary ตลอดช่วง 0–30 วินาที |
+| G — Duplicate Answer / Idempotency | PASS | หลังแก้เฉพาะ diagnostic harness โดยไม่เปลี่ยน protocol/rules, trace แสดง `CLICK RECEIVED → HANDLER ENTERED → DUPLICATE SUBMIT ATTEMPTED → FIREBASE TRANSACTION RESULT: committed=false → EXPECTED DUPLICATE REJECTION/NO-OP`; answer เดิมยัง authoritative และไม่มี answer/result contribution ซ้ำ |
+| H — Refresh / Temporary Disconnect | PASS WITH OBSERVATION | Desktop และ mobile คง anonymous session และกลับ Room เดิมได้; refresh ระหว่าง QUESTION ไม่ reset shared timer, client ตอบได้หากยังมีเวลา และ client อื่นทำงานต่อ; ไม่ได้สรุป final reconnect policy และยังไม่มี authority migration |
+
+### Validated timing protocol
+
+`Prepare Question → Preload → Decode → Client Ready → Ready Barrier → shared revealAt → Countdown → synchronized visibility → shared timer → Answer → Answer Lock → Result`
+
+หลักการที่ได้รับการยืนยันในขอบเขต POC:
+
+1. `Loaded ≠ Visible` และการโหลดเร็วกว่าไม่ทำให้ได้ gameplay advantage
+2. Client รายงาน Ready หลัง local preload และ decode ที่จำเป็นเสร็จแล้วเท่านั้น
+3. Authority รอ required participants ก่อน schedule `revealAt`
+4. Firebase ใช้กระจาย runtime state แต่การได้รับ event ไม่ได้เปิดภาพโดยตรง
+5. Visibility และ Remaining Time คำนวณจาก `revealAt` และ shared/server-offset-adjusted time
+6. Blink visibility ใช้ shared clock เดียวกัน
+7. Duplicate answer ถูก transaction ปฏิเสธแบบ idempotent/no-op โดยไม่ overwrite answer เดิม
+8. Refresh สามารถกู้ shared round timing ได้ในสถานการณ์ POC ที่สังเกต แต่ไม่กำหนด reconnect policy ถาวร
+
+### Diagnostic harness finding
+
+ระหว่าง Test G พบว่า control เดิมทำ transaction ได้ แต่ feedback อยู่ไกลจาก control ทำให้ดูเหมือนไม่ interactive การแก้ไขคง answer protocol, timing protocol และ Firebase Rules เดิมไว้ และเพิ่ม trace ใกล้ control เพื่อแสดง click, handler entry, transaction attempt และ `committed=false` อย่างตรวจสอบได้ Targeted clock updates ยังถูกเก็บไว้เพื่อป้องกัน ticker จากการแทนที่ interactive DOM ทุก 100 ms ส่วน trace จะถูกล้างเมื่อเข้าห้องหรือเริ่มรอบใหม่เพื่อไม่ให้หลักฐานต่างรอบปะปนกัน
+
+### Known limitations and TBD
+
+- Final production reveal tolerance
+- Final player-count limit; ค่า 2–4 clients เป็น POC assumption
+- Final question duration; ค่า 30 วินาทีเป็น POC assumption
+- Final countdown duration; ค่า 3 วินาทีเป็น POC assumption
+- Reconnect policy
+- Authority migration
+- Authority disconnect handling
+- Production Firebase security architecture
+- Final matchmaking architecture
+- Final Firebase data-layer decision beyond the POC conclusion
+- Large-scale concurrency behavior
+- Production latency characteristics
+- Speed-based scoring rules
+
+ไม่มีรายการใดข้างต้นถูกตัดสินเป็น final game rule จากผล POC นี้

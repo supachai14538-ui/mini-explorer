@@ -192,7 +192,7 @@ function renderQuestion(sharedTime: number): string {
         <div class="choices">${choices}</div>
         ${ownAnswer ? `<p class="message">Answer accepted at ${formatTime(ownAnswer.submittedAt)}</p>` : ""}
         ${ownAnswer && game.state === "RESULT" ? `<button type="button" class="text-button" data-action="duplicate-answer">Send the same answer again (Test G)</button>` : ""}
-        ${duplicateTestTrace ? `<p class="message" role="status" data-test-g-trace>${escapeHtml(duplicateTestTrace)}</p>` : ""}
+        ${ownAnswer && game.state === "RESULT" && duplicateTestTrace ? `<p class="message" role="status" data-test-g-trace>${escapeHtml(duplicateTestTrace)}</p>` : ""}
         ${result}
       </div>
     </div>
@@ -370,6 +370,7 @@ async function connectToRoom(targetRoomId: string, name: string, restored = fals
   room = null;
   localPreparationId = null;
   pendingReady = null;
+  duplicateTestTrace = "";
   statusMessage = restored ? "Restored browser session; reconnect behavior remains a POC observation." : "Joined room.";
   errorMessage = "";
   sessionStorage.setItem(SESSION_KEY, JSON.stringify({ roomId, displayName }));
@@ -547,6 +548,7 @@ async function handleJoinRoom(): Promise<void> {
 async function handlePrepareRound(): Promise<void> {
   if (!services || !roomId) return;
   const mode = selectedMode;
+  duplicateTestTrace = "";
   errorMessage = "";
   try {
     await prepareRound(services.database, roomId, services.user.uid, mode, now());
