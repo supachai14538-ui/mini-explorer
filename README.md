@@ -7,7 +7,7 @@ This branch contains a deliberately small browser prototype for validating the a
 
 ### Run locally
 
-Requirements: Node.js 20+ and a Firebase project used only for this POC.
+Requirements: Node.js 22.12+ and a Firebase project used only for this POC.
 
 1. Install dependencies with `npm install`.
 2. Copy `.env.example` to `.env.local` and add the Firebase Web App configuration.
