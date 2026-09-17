@@ -1,0 +1,44 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$roomId": {
+        ".read": "auth != null",
+        "meta": {
+          ".write": "auth != null && ((!data.exists() && newData.child('authorityUid').val() === auth.uid) || data.child('authorityUid').val() === auth.uid)"
+        },
+        "players": {
+          ".write": "auth != null"
+        },
+        "game": {
+          ".write": "auth != null && root.child('rooms').child($roomId).child('meta').child('authorityUid').val() === auth.uid"
+        },
+        "readiness": {
+          "$preparationId": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($roomId).child('game').child('preparationId').val() === $preparationId"
+            }
+          }
+        },
+        "answers": {
+          "$roundId": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && !data.exists() && root.child('rooms').child($roomId).child('game').child('roundId').val() === $roundId && root.child('rooms').child($roomId).child('game').child('participantIds').child(auth.uid).val() === true && (root.child('rooms').child($roomId).child('game').child('state').val() === 'COUNTDOWN' || root.child('rooms').child($roomId).child('game').child('state').val() === 'QUESTION') && now >= root.child('rooms').child($roomId).child('game').child('revealAt').val() && now <= root.child('rooms').child($roomId).child('game').child('revealAt').val() + root.child('rooms').child($roomId).child('game').child('durationMs').val()"
+            }
+          }
+        },
+        "diagnostics": {
+          "$roundId": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid"
+            }
+          }
+        },
+        "events": {
+          ".write": "auth != null && root.child('rooms').child($roomId).child('meta').child('authorityUid').val() === auth.uid"
+        }
+      }
+    }
+  }
+}
